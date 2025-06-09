@@ -8,17 +8,63 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
+app.config['GOOGLE_MAPS_API_KEY'] = 'AIzaSyAm9ZohxgPZhRvuoqmpxrLCImwF1Mjw3Hs'  # Nueva configuración añadida
 
 # Crear carpeta de uploads si no existe
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Datos simulados de rutas
+# Datos simulados de rutas (modificado para incluir coordenadas)
 rutas = {
-    'T1': {'nombre': 'Transmilenio Línea Troncal', 'saturacion': 'alta', 'tiempo_estimado': 45},
-    'A1': {'nombre': 'Ruta Alimentadora Norte', 'saturacion': 'media', 'tiempo_estimado': 25},
-    'U1': {'nombre': 'Urbano Centro', 'saturacion': 'baja', 'tiempo_estimado': 30},
-    'S1': {'nombre': 'SITP Portal Sur', 'saturacion': 'alta', 'tiempo_estimado': 40},
-    'B2': {'nombre': 'Bus Chapinero', 'saturacion': 'media', 'tiempo_estimado': 35}
+    'T1': {
+        'nombre': 'Transmilenio Línea Troncal', 
+        'saturacion': 'alta', 
+        'tiempo_estimado': 45,
+        'coordenadas': [
+            {'lat': 4.7110, 'lng': -74.0721},
+            {'lat': 4.6987, 'lng': -74.0762},
+            {'lat': 4.6923, 'lng': -74.0825}
+        ]
+    },
+    'A1': {
+        'nombre': 'Ruta Alimentadora Norte', 
+        'saturacion': 'media', 
+        'tiempo_estimado': 25,
+        'coordenadas': [
+            {'lat': 4.7210, 'lng': -74.0521},
+            {'lat': 4.7187, 'lng': -74.0562},
+            {'lat': 4.7123, 'lng': -74.0625}
+        ]
+    },
+    'U1': {
+        'nombre': 'Urbano Centro', 
+        'saturacion': 'baja', 
+        'tiempo_estimado': 30,
+        'coordenadas': [
+            {'lat': 4.6010, 'lng': -74.0621},
+            {'lat': 4.6087, 'lng': -74.0662},
+            {'lat': 4.6023, 'lng': -74.0725}
+        ]
+    },
+    'S1': {
+        'nombre': 'SITP Portal Sur', 
+        'saturacion': 'alta', 
+        'tiempo_estimado': 40,
+        'coordenadas': [
+            {'lat': 4.5810, 'lng': -74.1421},
+            {'lat': 4.5787, 'lng': -74.1462},
+            {'lat': 4.5723, 'lng': -74.1525}
+        ]
+    },
+    'B2': {
+        'nombre': 'Bus Chapinero', 
+        'saturacion': 'media', 
+        'tiempo_estimado': 35,
+        'coordenadas': [
+            {'lat': 4.6510, 'lng': -74.0621},
+            {'lat': 4.6587, 'lng': -74.0562},
+            {'lat': 4.6523, 'lng': -74.0525}
+        ]
+    }
 }
 
 usuarios = []
@@ -31,7 +77,160 @@ HTML_TEMPLATE = '''
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TransportApp - Monitor de Saturación</title>
+    
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAm9ZohxgPZhRvuoqmpxrLCImwF1Mjw3Hs&callback=initMap" async defer></script>
+    
+    
+    
+    
+    
+    
+    <div class="container">
+        <div class="header">
+            <h1>🚌 TransportApp</h1>
+            <p>Monitor de Saturación en Tiempo Real</p>
+        </div>
+        
+        
+        <div class="tabs">
+            <button class="tab-btn active" onclick="openTab('mapa-tab')">🗺️ Mapa</button>
+        </div>
+        
+        
+        <div id="mapa-tab" class="tab-content active">
+            <!-- Contenido del Mapa -->
+            <div class="card">
+                <h3>📍 Mapa de Rutas</h3>
+                <div class="map-container">
+                    <div class="map-controls">
+                        <select id="ruta-selector" onchange="actualizarMapa()">
+                            <option value="all">Todas las rutas</option>
+                            {% for codigo, info in rutas.items() %}
+                            <option value="{{ codigo }}">{{ codigo }} - {{ info.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div id="map"></div>
+                </div>
+                <p style="margin-top: 10px; font-size: 0.9em;">
+                    <span class="status alta"></span> Alta saturación 
+                    <span class="status media"></span> Media saturación 
+                    <span class="status baja"></span> Baja saturación
+                </p>
+            </div>
+        </div>
+        
+        <div id="rutas-tab" class="tab-content">
+            <!-- Contenido de Estado de Rutas -->
+            <div class="card">
+                <h3>🚍 Estado de Rutas</h3>
+                <div id="rutas-container">
+                    {% for codigo, info in rutas.items() %}
+                    <div class="ruta">
+                        <div>
+                            <span class="status {{ info.saturacion }}"></span>
+                            <strong>{{ codigo }}</strong> - {{ info.nombre }}
+                        </div>
+                        <span>{{ info.tiempo_estimado }} min</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                <button class="btn" onclick="actualizarRutas()">🔄 Actualizar</button>
+            </div>
+        </div>
+        
+        <div id="reportes-tab" class="tab-content">
+            <!-- Contenido de Reportar Saturación -->
+            <div class="card">
+                <h3>📢 Reportar Saturación</h3>
+                <form onsubmit="reportarSaturacion(event)">
+                </form>
+            </div>
+        </div>
+        
+        <div id="perfil-tab" class="tab-content">
+            <!-- Contenido de Perfil -->
+            <div class="card">
+                <h3>👤 Perfil de Usuario</h3>
+                <form onsubmit="guardarPerfil(event)">
+                </form>
+            </div>
+        </div>
+        
+        <div id="notificaciones-tab" class="tab-content">
+            <!-- Contenido de Notificaciones -->
+            <div class="card">
+                <h3>🔔 Notificaciones</h3>
+            </div>
+        </div>
+        
+        <div id="estadisticas-tab" class="tab-content">
+            <!-- Contenido de Estadísticas -->
+            <div class="card">
+                <h3>📊 Estadísticas</h3>
+            </div>
+        </div>
+        
+        <div id="dev-tab" class="tab-content">
+            <!-- Contenido de Panel Dev -->
+            <div class="card">
+                <h3>⚙️ Panel de Desarrolladores</h3>
+            </div>
+        </div>
+    </div>
+
     <style>
+        
+        .tabs {
+            display: flex;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            background: rgba(255,255,255,0.9);
+            border-radius: 10px;
+            padding: 10px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+        }
+        
+        .tab-btn {
+            background: none;
+            border: none;
+            padding: 10px 15px;
+            margin: 0 5px;
+            cursor: pointer;
+            font-size: 14px;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+        
+        .tab-btn:hover {
+            background: #e0e0ff;
+        }
+        
+        .tab-btn.active {
+            background: #667eea;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .tab-content {
+            display: none;
+            width: 100%;
+            animation: fadeIn 0.5s;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+
+    
+    
+<style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; }
         .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
@@ -49,7 +248,26 @@ HTML_TEMPLATE = '''
         .form-group { margin: 10px 0; }
         input, select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 5px; margin-top: 5px; }
         .notification { background: #e3f2fd; border-left: 4px solid #2196F3; padding: 10px; margin: 10px 0; border-radius: 5px; }
-        .map-placeholder { background: #e0e0e0; height: 200px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #666; }
+        /* Modificado: Estilos para el mapa */
+        #map { 
+            height: 400px; 
+            width: 100%;
+            border-radius: 10px;
+            margin-top: 10px;
+        }
+        .map-container {
+            position: relative;
+        }
+        .map-controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
         .dev-section { background: #f8f9fa; border: 2px dashed #6c757d; padding: 15px; margin: 10px 0; border-radius: 10px; }
         .file-upload { border: 2px dashed #007bff; padding: 20px; text-align: center; border-radius: 10px; margin: 10px 0; }
         .file-upload:hover { background: #f8f9ff; }
@@ -64,20 +282,62 @@ HTML_TEMPLATE = '''
             <p>Monitor de Saturación en Tiempo Real</p>
         </div>
         
-        <div class="dashboard">
-            <!-- Mapa Interactivo -->
+        
+            
+            
+            
             <div class="card">
-                <h3>📍 Mapa de Rutas</h3>
-                <div class="map-placeholder">
-                    <div style="text-align: center;">
-                        <p>🗺️ Mapa Interactivo</p>
-                        <p>Visualización de rutas en tiempo real</p>
-                    </div>
+                <!-- Login -->
+    <div class="card">
+        <div style="text-align: center;">
+            <h3>Trafi-Ruta 🚌</h3>
+            <h3>Bienvenidos</h3>
+        </div>
+        <div class="form-group">
+            <label for="usuario">Usuario</label>
+            <input type="text" id="usuario" name="usuario" placeholder="Ingresa tu usuario" required />
+        </div>
+        <div class="form-group">
+            <label for="password">Contraseña</label>
+            <input type="password" id="password" name="password" placeholder="Ingresa tu contraseña" required />
+        </div>
+        <button type="submit" class="btn">Login</button>
+        </form>
+        <div class="extra-options" style="display: block;">
+            <a href="#">¿Olvidaste tu contraseña?</a>
+            <a href="#">Términos del Acuerdo</a>
+        </div>
+    </div>
+
+            <!-- Menu -->
+        <div class="card" style="display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between;">
+                <a href="">🏠</a>
+                <a href="">🔍</a>
+            </div>
+            <div>
+                <h3>Trafi-Ruta 🚌</h3>
+            </div>
+            <div style="display: flex; flex-direction: column; align-items: center;">
+                <div style="display: flex; flex-direction: column; align-items: center; margin-top: 4px;">
+                    <a href="">🚌</a>
+                    <p>Rutas Saturadas</p>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: center; margin-top: 4px;">
+                    <a href="">🗺️</a>
+                    <p>Map</p>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: center; margin-top: 4px;">
+                    📍
+                    <p>Rutas en Camino</p>
                 </div>
             </div>
-            
-            <!-- Estado de Rutas -->
-            <div class="card">
+            <div style="display: flex; justify-content: space-between; margin-top: auto;">
+                <a href="">📅</a>
+                <a href="">📍</a>
+                <a href="">🧑‍🦲</a>
+            </div>
+        </div>
                 <h3>🚍 Estado de Rutas</h3>
                 <div id="rutas-container">
                     {% for codigo, info in rutas.items() %}
@@ -93,7 +353,7 @@ HTML_TEMPLATE = '''
                 <button class="btn" onclick="actualizarRutas()">🔄 Actualizar</button>
             </div>
             
-            <!-- Reportar Saturación -->
+            
             <div class="card">
                 <h3>📢 Reportar Saturación</h3>
                 <form onsubmit="reportarSaturacion(event)">
@@ -117,7 +377,7 @@ HTML_TEMPLATE = '''
                 </form>
             </div>
             
-            <!-- Perfil de Usuario -->
+            
             <div class="card">
                 <h3>👤 Perfil de Usuario</h3>
                 <form onsubmit="guardarPerfil(event)">
@@ -137,7 +397,7 @@ HTML_TEMPLATE = '''
                 </form>
             </div>
             
-            <!-- Notificaciones -->
+            
             <div class="card">
                 <h3>🔔 Notificaciones</h3>
                 <div id="notificaciones">
@@ -151,7 +411,7 @@ HTML_TEMPLATE = '''
                 <button class="btn" onclick="toggleNotificaciones()">🔕 Activar/Desactivar</button>
             </div>
             
-            <!-- Estadísticas -->
+            
             <div class="card">
                 <h3>📊 Estadísticas</h3>
                 <div>
@@ -164,7 +424,7 @@ HTML_TEMPLATE = '''
                 <button class="btn" onclick="verEstadisticas()">📈 Ver Más</button>
             </div>
             
-            <!-- Sección de Desarrolladores -->
+            
             <div class="card">
                 <h3>⚙️ Panel de Desarrolladores</h3>
                 <div class="dev-section">
@@ -199,6 +459,130 @@ U1,2024-01-15,09:00,baja,30</pre>
     </div>
 
     <script>
+        
+        let map;
+        let polylines = [];
+        let markers = [];
+        
+        function initMap() {
+            // mapa centrado en Bogotá
+            map = new google.maps.Map(document.getElementById('map'), {
+                center: { lat: 4.7110, lng: -74.0721 },
+                zoom: 12,
+                mapTypeId: 'roadmap'
+            });
+            
+            
+            map.addControl(new google.maps.NavigationControl());
+            
+            
+            cargarRutasEnMapa();
+        }
+        
+        function cargarRutasEnMapa() {
+            
+            polylines.forEach(polyline => polyline.setMap(null));
+            markers.forEach(marker => marker.setMap(null));
+            polylines = [];
+            markers = [];
+            
+            
+            const rutaSeleccionada = document.getElementById('ruta-selector').value;
+            
+            
+            const colors = {
+                'alta': '#FF0000',
+                'media': '#FFA500',
+                'baja': '#00FF00'
+            };
+            
+            
+            {% for codigo, info in rutas.items() %}
+                if (rutaSeleccionada === 'all' || rutaSeleccionada === '{{ codigo }}') {
+                    
+                    if ({{ info.coordenadas|tojson }}) {
+                        const path = {{ info.coordenadas|tojson }};
+                        
+                        
+                        const polyline = new google.maps.Polyline({
+                            path: path,
+                            geodesic: true,
+                            strokeColor: colors['{{ info.saturacion }}'] || '#000000',
+                            strokeOpacity: 1.0,
+                            strokeWeight: 4
+                        });
+                        polyline.setMap(map);
+                        polylines.push(polyline);
+                        
+                        
+                        if (path.length > 0) {
+                            
+                            const startMarker = new google.maps.Marker({
+                                position: path[0],
+                                map: map,
+                                title: 'Inicio: {{ info.nombre }}',
+                                icon: {
+                                    path: google.maps.SymbolPath.CIRCLE,
+                                    fillColor: colors['{{ info.saturacion }}'] || '#000000',
+                                    fillOpacity: 1,
+                                    strokeWeight: 0,
+                                    scale: 8
+                                }
+                            });
+                            
+                            
+                            const startInfoWindow = new google.maps.InfoWindow({
+                                content: `<strong>{{ codigo }}</strong><br>{{ info.nombre }}<br>Saturación: {{ info.saturacion }}<br>Tiempo: {{ info.tiempo_estimado }} min`
+                            });
+                            startMarker.addListener('click', () => {
+                                startInfoWindow.open(map, startMarker);
+                            });
+                            markers.push(startMarker);
+                            
+                            
+                            const endMarker = new google.maps.Marker({
+                                position: path[path.length - 1],
+                                map: map,
+                                title: 'Fin: {{ info.nombre }}',
+                                icon: {
+                                    path: google.maps.SymbolPath.CIRCLE,
+                                    fillColor: colors['{{ info.saturacion }}'] || '#000000',
+                                    fillOpacity: 1,
+                                    strokeWeight: 0,
+                                    scale: 8
+                                }
+                            });
+                            
+                            
+                            const endInfoWindow = new google.maps.InfoWindow({
+                                content: `<strong>{{ codigo }}</strong><br>{{ info.nombre }}<br>Saturación: {{ info.saturacion }}<br>Tiempo: {{ info.tiempo_estimado }} min`
+                            });
+                            endMarker.addListener('click', () => {
+                                endInfoWindow.open(map, endMarker);
+                            });
+                            markers.push(endMarker);
+                        }
+                    }
+                }
+            {% endfor %}
+            
+            
+            if (polylines.length > 0) {
+                const bounds = new google.maps.LatLngBounds();
+                polylines.forEach(polyline => {
+                    polyline.getPath().getArray().forEach(latLng => {
+                        bounds.extend(latLng);
+                    });
+                });
+                map.fitBounds(bounds);
+            }
+        }
+        
+        function actualizarMapa() {
+            cargarRutasEnMapa();
+        }
+
+        
         function actualizarRutas() {
             fetch('/api/rutas')
                 .then(response => response.json())
@@ -301,13 +685,13 @@ U1,2024-01-15,09:00,baja,30</pre>
 </html>
 '''
 
+
 @app.route('/')
 def index():
     return render_template_string(HTML_TEMPLATE, rutas=rutas, usuarios=usuarios)
 
 @app.route('/api/rutas')
 def api_rutas():
-    # Simular cambios aleatorios en saturación
     for ruta in rutas.values():
         ruta['saturacion'] = random.choice(['baja', 'media', 'alta'])
         ruta['tiempo_estimado'] = random.randint(20, 50)
@@ -363,10 +747,10 @@ def upload_csv():
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
             
-            # Leer y procesar CSV
+            
             df = pd.read_csv(filepath)
             
-            # Validar columnas necesarias
+            
             required_columns = ['ruta', 'fecha', 'hora', 'saturacion', 'tiempo_estimado']
             if not all(col in df.columns for col in required_columns):
                 return jsonify({
@@ -374,11 +758,11 @@ def upload_csv():
                     'message': f'CSV debe contener columnas: {", ".join(required_columns)}'
                 }), 400
             
-            # Convertir a lista de diccionarios
+            
             nuevos_datos = df.to_dict('records')
             datos_historicos.extend(nuevos_datos)
             
-            # Actualizar rutas basado en datos históricos
+            
             actualizar_rutas_con_historicos()
             
             return jsonify({
@@ -399,16 +783,16 @@ def procesar_datos():
         if not datos_historicos:
             return jsonify({'status': 'error', 'message': 'No hay datos históricos para procesar'})
         
-        # Análisis básico de datos históricos
+        
         df = pd.DataFrame(datos_historicos)
         
-        # Estadísticas por ruta
+        
         stats_por_ruta = df.groupby('ruta').agg({
             'saturacion': lambda x: x.mode()[0] if not x.empty else 'media',
             'tiempo_estimado': 'mean'
         }).to_dict('index')
         
-        # Actualizar rutas actuales con datos históricos
+        
         for ruta_code, stats in stats_por_ruta.items():
             if ruta_code in rutas:
                 rutas[ruta_code]['saturacion'] = stats['saturacion']
@@ -431,7 +815,7 @@ def exportar_datos():
         
         df = pd.DataFrame(datos_historicos)
         
-        # Crear archivo CSV de exportación
+        
         export_filename = f'datos_historicos_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
         export_path = os.path.join(app.config['UPLOAD_FOLDER'], export_filename)
         df.to_csv(export_path, index=False)
@@ -452,16 +836,16 @@ def actualizar_rutas_con_historicos():
     
     df = pd.DataFrame(datos_historicos)
     
-    # Calcular promedios por ruta
+    
     for ruta_code in rutas.keys():
         datos_ruta = df[df['ruta'] == ruta_code]
         if not datos_ruta.empty:
-            # Moda de saturación (más frecuente)
+            
             saturacion_freq = datos_ruta['saturacion'].mode()
             if not saturacion_freq.empty:
                 rutas[ruta_code]['saturacion'] = saturacion_freq[0]
             
-            # Promedio de tiempo
+            
             tiempo_promedio = datos_ruta['tiempo_estimado'].mean()
             if not pd.isna(tiempo_promedio):
                 rutas[ruta_code]['tiempo_estimado'] = int(tiempo_promedio)
@@ -469,6 +853,12 @@ def actualizar_rutas_con_historicos():
 if __name__ == '__main__':
     print("🚌 Iniciando TransportApp...")
     print("📱 Accede a: http://localhost:5000")
+    print("🗺️ Google Maps API integrada")
     print("⚙️ Panel de desarrolladores incluido para carga de CSV")
     print("📁 Carpeta de uploads creada en:", os.path.abspath(app.config['UPLOAD_FOLDER']))
     app.run(debug=True, host='0.0.0.0', port=5000)
+
+
+
+
+
